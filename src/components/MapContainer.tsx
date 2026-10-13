@@ -92,9 +92,9 @@ export const MapContainer: React.FC<MapContainerProps> = ({
         L.tileLayer(
           mapType === 'satellite'
             ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-            : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+            : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
           {
-            attribution: '&copy; OpenStreetMap &copy; CartoDB',
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
             maxZoom: 19,
           }
         ).addTo(map);
@@ -125,9 +125,9 @@ export const MapContainer: React.FC<MapContainerProps> = ({
       L.tileLayer(
         mapType === 'satellite'
           ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-          : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+          : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
         {
-          attribution: '&copy; OpenStreetMap &copy; CartoDB',
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
           maxZoom: 19,
         }
       ).addTo(leafletMapRef.current);
@@ -381,13 +381,13 @@ export const MapContainer: React.FC<MapContainerProps> = ({
         ) : (
           <div className="bg-white/95 backdrop-blur px-3 py-1.5 rounded-xl border border-slate-200 shadow-md text-xs font-semibold text-slate-800 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>RouteMind Vector Map Active</span>
+            <span>OpenStreetMap Active (Free)</span>
             <button
               onClick={onOpenApiKeyModal}
               className="text-[10px] font-bold text-brand-700 bg-brand-50 hover:bg-brand-100 px-2 py-0.5 rounded border border-brand-200 transition-colors flex items-center gap-1"
             >
               <Key className="w-2.5 h-2.5" />
-              Google Key
+              + Google Maps
             </button>
           </div>
         )}
