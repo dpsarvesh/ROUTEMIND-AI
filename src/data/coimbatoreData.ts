@@ -1,5 +1,34 @@
+/**
+ * RouteMind AI — Coimbatore Local Route Dataset
+ *
+ * This module provides the curated demo route dataset for intra-city navigation
+ * within Coimbatore. It serves as the Tier 3 (synthetic heuristics) data source
+ * when the Google Maps Directions API is not available.
+ *
+ * Contents:
+ *   1. COIMBATORE_PRESETS — 15 preset locations across the city (landmarks, transit, tech, etc.)
+ *   2. interpolatePoints() — Generates smooth polyline coordinates between waypoints
+ *   3. getCoimbatoreDemoRoutes() — Returns 2–3 route candidates for a given OD pair
+ *
+ * Route matching strategy:
+ *   - Scenario-based: substring matching on origin/destination names
+ *   - Gandhipuram → Airport: 3 routes (Avinashi Rd, Sathy Road Bypass, Trichy Rd)
+ *   - Any other OD pair: 2 fallback routes (via Trichy Rd, via Race Course)
+ *
+ * Data realism:
+ *   - Distances, durations, and traffic data are based on real Coimbatore roads
+ *   - Warnings reference actual construction projects (e.g., Avinashi Elevated Corridor)
+ *   - Coordinates are real WGS-84 positions within Coimbatore city limits
+ *
+ * @module data/coimbatoreData
+ */
 import { PresetLocation, RouteOption, LatLng } from '../types/navigation';
 
+/**
+ * Preset locations available in the trip planner dropdown for local navigation.
+ * Each location has a WGS-84 coordinate verified against Google Maps.
+ * Categories: transit (bus/rail/air), tech (IT parks), shopping, hospital, landmark
+ */
 export const COIMBATORE_PRESETS: PresetLocation[] = [
   { name: 'Gandhipuram Central Bus Stand', category: 'transit', lat: 11.0183, lng: 76.9644, subtitle: 'Central City Transit Hub' },
   { name: 'Coimbatore International Airport (CJB)', category: 'transit', lat: 11.0300, lng: 77.0434, subtitle: 'Civil Aerodrome, Avinashi Rd' },
@@ -18,7 +47,33 @@ export const COIMBATORE_PRESETS: PresetLocation[] = [
   { name: 'Eachanari Temple', category: 'landmark', lat: 10.9234, lng: 76.9743, subtitle: 'Pollachi Main Road' },
 ];
 
-// Helper to interpolate realistic waypoints
+/**
+ * Generates a smooth polyline by interpolating between waypoints.
+ *
+ * Used to create realistic-looking route polylines for Leaflet/Google Maps rendering
+ * from a sparse set of control points. Each segment between consecutive points is
+ * subdivided into 6 intermediate positions using linear interpolation.
+ *
+ * Optional jitter parameter adds sinusoidal variation to simulate GPS trace
+ * variability (crowd-sourced feed simulation per §10.3 of the specification).
+ *
+ * @param start - Starting coordinate (origin)
+ * @param end - Ending coordinate (destination)
+ * @param waypoints - Intermediate control points for realistic path shaping
+ * @param jitter - Amplitude of sinusoidal variation (default: 0 = no jitter)
+ * @returns Dense array of LatLng points suitable for polyline rendering
+ *
+ * @example
+ * ```ts
+ * const coords = interpolatePoints(
+ *   { lat: 11.0183, lng: 76.9644 },  // Gandhipuram
+ *   { lat: 11.0300, lng: 77.0434 },  // Airport
+ *   [{ lat: 11.0450, lng: 76.9890 }], // Kalapatti waypoint
+ *   0.001
+ * );
+ * // Returns ~20 points forming a smooth curve through Kalapatti
+ * ```
+ */
 export function interpolatePoints(start: LatLng, end: LatLng, waypoints: LatLng[] = [], jitter = 0): LatLng[] {
   const points: LatLng[] = [start, ...waypoints, end];
   const detailed: LatLng[] = [];
@@ -40,6 +95,24 @@ export function interpolatePoints(start: LatLng, end: LatLng, waypoints: LatLng[
   return detailed;
 }
 
+/**
+ * Returns demo route candidates for a given origin→destination pair within Coimbatore.
+ *
+ * Route matching uses case-insensitive substring matching:
+ *   - If origin contains 'gandhipuram' OR destination contains 'airport' → 3 routes
+ *   - Otherwise → 2 generic routes (RS Puram → Singanallur)
+ *
+ * Each returned route includes:
+ *   - Realistic distance/duration metrics
+ *   - Pre-seeded incident warnings (construction, traffic)
+ *   - Interpolated polyline coordinates for map rendering
+ *   - Step-by-step navigation instructions
+ *   - Placeholder AI scores (recalculated by generateAIRecommendation)
+ *
+ * @param originName - Human-readable origin location name
+ * @param destName - Human-readable destination location name
+ * @returns Array of 2–3 RouteOption candidates for MCDA evaluation
+ */
 export function getCoimbatoreDemoRoutes(originName: string, destName: string): RouteOption[] {
   const normOrigin = originName.toLowerCase();
   const normDest = destName.toLowerCase();

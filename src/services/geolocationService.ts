@@ -1,17 +1,61 @@
+/**
+ * RouteMind AI — Browser Geolocation Service
+ *
+ * Provides a reactive wrapper around the browser’s Geolocation API with:
+ *   - Observer pattern (subscribe/notify) for real-time position updates
+ *   - One-shot position requests (getCurrentPosition)
+ *   - Continuous GPS tracking (watchPosition) for active navigation
+ *   - Comprehensive error handling for all permission states
+ *
+ * State Machine:
+ *   prompt → granted (on success) | denied (permission refused) | unavailable (GPS error)
+ *   unsupported (if browser lacks Geolocation API)
+ *
+ * Speed conversion: Browser API provides m/s; this service converts to km/h.
+ *
+ * @module services/geolocationService
+ */
 import { LatLng } from '../types/navigation';
 
+/**
+ * Immutable snapshot of the current geolocation state.
+ * Returned by getState() and passed to all subscribed listeners.
+ */
 export interface GeolocationState {
+  /** Current GPS coordinates, or null if not yet acquired */
   coords: LatLng | null;
+  /** GPS accuracy radius in meters (lower = more precise) */
   accuracyMeters: number | null;
+  /** Compass heading in degrees (0-360), null if unavailable */
   heading: number | null;
+  /** Current speed in km/h (converted from m/s), null if stationary */
   speedKmh: number | null;
+  /** Permission/availability state of the geolocation system */
   status: 'prompt' | 'granted' | 'denied' | 'unavailable' | 'unsupported';
+  /** Human-readable error message when status is not 'granted' */
   errorMessage?: string;
+  /** Whether continuous GPS tracking (watchPosition) is active */
   isWatching: boolean;
 }
 
+/** Callback type for geolocation state change listeners */
 type GeolocationCallback = (state: GeolocationState) => void;
 
+/**
+ * Singleton service managing browser geolocation with observer pattern.
+ *
+ * Usage:
+ *   - Subscribe to position updates: `geolocationService.subscribe(callback)`
+ *   - Request one-shot position: `await geolocationService.getCurrentPosition()`
+ *   - Start live tracking: `geolocationService.startLiveTracking()`
+ *   - Stop live tracking: `geolocationService.stopLiveTracking()`
+ *
+ * Error boundaries:
+ *   - Browser without Geolocation API → status = 'unsupported'
+ *   - Permission denied → status = 'denied' with user message
+ *   - GPS unavailable → status = 'unavailable' with diagnostic message
+ *   - Timeout → status = 'unavailable'
+ */
 class GeolocationService {
   private watchId: number | null = null;
   private listeners: Set<GeolocationCallback> = new Set();

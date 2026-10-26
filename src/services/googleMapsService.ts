@@ -1,3 +1,22 @@
+/**
+ * RouteMind AI — Google Maps Platform Integration Service
+ *
+ * Manages the optional Google Maps JavaScript SDK integration:
+ *   1. Dynamic SDK loading via script injection
+ *   2. Authentication failure detection (gm_authFailure callback)
+ *   3. Real-time Directions API requests with traffic model
+ *   4. Response transformation from Google format → RouteOption[]
+ *
+ * This service is optional — the app works fully without a Google Maps API key
+ * by falling back to OpenStreetMap tiles and the curated demo dataset.
+ *
+ * Required Google Cloud APIs:
+ *   - Maps JavaScript API
+ *   - Directions API
+ *   - Places API
+ *
+ * @module services/googleMapsService
+ */
 import { LatLng, RouteOption, RouteStep, TrafficStatus, DataSource } from '../types/navigation';
 import { storageService } from './storageService';
 
@@ -8,6 +27,21 @@ declare global {
   }
 }
 
+/**
+ * Singleton service for Google Maps Platform SDK management.
+ *
+ * Lifecycle:
+ *   1. User enters API key in Settings modal
+ *   2. loadGoogleMaps(key) injects SDK script tag
+ *   3. On success: isGoogleMapsAvailable() returns true
+ *   4. calculateRealGoogleRoutes() sends Directions API requests
+ *   5. On auth failure: gm_authFailure callback sets authFailed flag
+ *
+ * Error boundaries:
+ *   - Invalid API key → gm_authFailure callback → authFailed = true
+ *   - Script load failure → resolve(false) → app stays on OpenStreetMap
+ *   - Directions API error → resolve(null) → app falls back to demo dataset
+ */
 class GoogleMapsService {
   private isLoaded = false;
   private loadPromise: Promise<boolean> | null = null;
@@ -69,7 +103,24 @@ class GoogleMapsService {
   }
 
   /**
-   * Request routes from Google Directions Service with traffic model
+   * Request routes from Google Directions Service with live traffic model.
+   *
+   * Sends a DirectionsService.route() request with:
+   *   - `provideRouteAlternatives: true` for multiple candidates
+   *   - `trafficModel: BEST_GUESS` for real-time duration_in_traffic
+   *
+   * Response transformation:
+   *   - `leg.distance.value` → `distanceKm` (meters → km)
+   *   - `leg.duration.value` → `normalDurationMin` (seconds → minutes)
+   *   - `leg.duration_in_traffic.value` → `durationMin` (seconds → minutes)
+   *   - Traffic delay → trafficStatus enum (thresholds: 3/8/15 min)
+   *   - `route.overview_path` → `coordinates[]` for map polyline
+   *   - `leg.steps[]` → `steps[]` with HTML stripped
+   *
+   * @param origin - Starting point (place name string or LatLng coordinate)
+   * @param destination - End point (place name string or LatLng coordinate)
+   * @param travelMode - Google Maps travel mode (default: DRIVING)
+   * @returns Array of RouteOption candidates, or null on failure
    */
   public async calculateRealGoogleRoutes(
     origin: string | LatLng,

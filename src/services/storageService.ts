@@ -1,17 +1,58 @@
+/**
+ * RouteMind AI — Browser localStorage Persistence Service
+ *
+ * This service provides a thin abstraction over the browser’s localStorage API
+ * for persisting user data across sessions. All data is stored as JSON strings
+ * under namespaced keys prefixed with `routemind_`.
+ *
+ * Persisted data categories:
+ *   1. Saved Places — User’s favorite locations (home, work, favorites)
+ *   2. Trip History — Last 30 planned trips (FIFO eviction)
+ *   3. User Preferences — Default travel mode, preference profile, demo mode
+ *   4. Google API Key — Optional Google Maps Platform API key
+ *
+ * Error Boundary Strategy:
+ *   All read operations wrap JSON.parse in try/catch and return safe defaults
+ *   on failure. This handles corrupted localStorage entries, quota exceeded errors,
+ *   and private browsing mode restrictions gracefully.
+ *
+ * Schema version: 1.0 (no migration needed; additive-only changes)
+ *
+ * @module services/storageService
+ */
 import { SavedPlace, TripHistoryItem, TravelMode, TravelPreference } from '../types/navigation';
 
+// ---------------------------------------------------------------------------
+// localStorage Key Constants
+// All keys are prefixed with 'routemind_' to avoid collisions with other apps.
+// ---------------------------------------------------------------------------
+
+/** Key for user's saved favorite places (JSON array of SavedPlace) */
 const SAVED_PLACES_KEY = 'routemind_saved_places';
+/** Key for trip planning history (JSON array of TripHistoryItem, max 30) */
 const TRIP_HISTORY_KEY = 'routemind_trip_history';
+/** Key for user preference settings (JSON object of UserPreferences) */
 const USER_PREFS_KEY = 'routemind_user_preferences';
+/** Key for Google Maps API key (plain string, not JSON) */
 const GOOGLE_API_KEY = 'routemind_google_api_key';
 
+/**
+ * User-configurable application preferences.
+ * Stored as a JSON blob in localStorage under USER_PREFS_KEY.
+ * Missing fields are filled from DEFAULT_PREFERENCES via spread merge.
+ */
 export interface UserPreferences {
+  /** Display name (used in greeting, not authentication) */
   userName: string;
+  /** Default travel mode pre-selected in the trip planner */
   defaultTravelMode: TravelMode;
+  /** Default AI preference profile pre-selected in the planner */
   defaultPreference: TravelPreference;
+  /** Whether to show demo incident overlays on routes */
   demoModeEnabled: boolean;
 }
 
+/** Safe defaults applied when no user preferences exist in storage */
 const DEFAULT_PREFERENCES: UserPreferences = {
   userName: 'Traveler',
   defaultTravelMode: 'car',
@@ -19,6 +60,7 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   demoModeEnabled: true,
 };
 
+/** Initial seed data for saved places — provides first-run defaults */
 const INITIAL_SAVED_PLACES: SavedPlace[] = [
   {
     id: 'sp-1',

@@ -1,3 +1,29 @@
+/**
+ * RouteMind AI — Main Application Component
+ *
+ * This is the root component that orchestrates the entire application:
+ *
+ * State Management:
+ *   - Navigation mode (local / inter-district)
+ *   - Trip planning inputs (origin, destination, travel mode, preference)
+ *   - AI scoring results (candidate routes, recommendation, custom weights)
+ *   - Active navigation state (GPS tracking, turn-by-turn HUD)
+ *   - Persistent user data (saved places, trip history)
+ *   - Modal visibility (AI Matrix, Settings, Saved Places, History)
+ *
+ * Data Flow:
+ *   1. User configures trip → planRoute() called
+ *   2. planRoute() attempts Google Maps API, falls back to demo dataset
+ *   3. generateAIRecommendation() scores and ranks candidates
+ *   4. Results propagated to child components via props
+ *   5. Trip recorded to localStorage history
+ *
+ * Responsive Layout:
+ *   - Desktop (lg+): Side-by-side planner cards + map
+ *   - Mobile: Tab-based toggle between planner and map views
+ *
+ * @module App
+ */
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   NavigationMode,
@@ -32,11 +58,19 @@ import { geolocationService, GeolocationState } from './services/geolocationServ
 import { storageService } from './services/storageService';
 import { googleMapsService } from './services/googleMapsService';
 
+// ---------------------------------------------------------------------------
+// Main Application Component
+// ---------------------------------------------------------------------------
+
 export function App() {
-  // Navigation Mode
+  // =========================================================================
+  // State: Navigation Mode & Trip Planning Inputs
+  // =========================================================================
+
+  /** Geographic scope: 'local' (Coimbatore) or 'inter-district' (Tamil Nadu) */
   const [navMode, setNavMode] = useState<NavigationMode>('local');
   
-  // Trip Planning State
+  // Trip Planning State — controlled inputs for origin/destination selection
   const [origin, setOrigin] = useState<string>('Gandhipuram Central Bus Stand');
   const [destination, setDestination] = useState<string>('Coimbatore International Airport (CJB)');
   const [travelMode, setTravelMode] = useState<TravelMode>('car');
@@ -44,36 +78,62 @@ export function App() {
   const [timeOption, setTimeOption] = useState<TimeOption>('now');
   const [customTime, setCustomTime] = useState<string>('');
   
-  // Custom Scoring Weights for AI Matrix
+
+  // =========================================================================
+  // State: AI Scoring Engine & Custom Weights
+  // =========================================================================
+
+  /** Custom weights for the interactive AI Decision Matrix modal slider */
   const [customWeights, setCustomWeights] = useState<ScoringWeights>(PREFERENCE_WEIGHTS['balanced']);
 
-  // Routes & AI Results
+
+  // =========================================================================
+  // State: Route Results & AI Recommendation
+  // =========================================================================
+
+  /** Array of scored route candidates (output of generateAIRecommendation) */
   const [candidateRoutes, setCandidateRoutes] = useState<RouteOption[]>([]);
   const [selectedRouteId, setSelectedRouteId] = useState<string>('');
   const [aiRecommendation, setAiRecommendation] = useState<AIRecommendation | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [dataSource, setDataSource] = useState<DataSource>('live');
 
-  // Navigation State
+
+  // =========================================================================
+  // State: Active Navigation & GPS
+  // =========================================================================
+
+  /** Whether the user is in active turn-by-turn navigation mode */
   const [isNavigating, setIsNavigating] = useState<boolean>(false);
 
-  // Geolocation
+  /** Live geolocation state from browser GPS (coords, accuracy, speed, heading) */
   const [geoState, setGeoState] = useState<GeolocationState>(geolocationService.getState());
 
-  // Persistence
+
+  // =========================================================================
+  // State: Persistence & Modals
+  // =========================================================================
+
+  /** User's saved favorite places (from localStorage) */
   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
   const [tripHistory, setTripHistory] = useState<TripHistoryItem[]>([]);
 
-  // Modals
+
+  /** Modal visibility flags */
   const [isAiMatrixOpen, setIsAiMatrixOpen] = useState<boolean>(false);
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState<boolean>(false);
   const [isSavedPlacesOpen, setIsSavedPlacesOpen] = useState<boolean>(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
 
-  // View toggle for mobile (cards vs map)
+
+  /** Mobile-only: toggles between trip planner cards and interactive map */
   const [mobileTab, setMobileTab] = useState<'planner' | 'map'>('planner');
 
-  // Subscribe to geolocation updates
+  // =========================================================================
+  // Effects: Geolocation subscription & initial data loading
+  // =========================================================================
+
+  /** Subscribe to real-time geolocation updates from the browser GPS */
   useEffect(() => {
     const unsub = geolocationService.subscribe((state) => {
       setGeoState(state);
@@ -81,7 +141,7 @@ export function App() {
     return unsub;
   }, []);
 
-  // Load Saved Places and Trip History from storage
+  /** Load persisted data from localStorage and attempt Google Maps SDK init */
   useEffect(() => {
     setSavedPlaces(storageService.getSavedPlaces());
     setTripHistory(storageService.getTripHistory());
@@ -95,7 +155,15 @@ export function App() {
     }
   }, []);
 
-  // Handle Mode Switch (Local vs Inter-District)
+  // =========================================================================
+  // Handlers: Navigation Mode Switch
+  // =========================================================================
+
+  /**
+   * Handle switching between local and inter-district navigation modes.
+   * Resets origin/destination to sensible defaults for the new mode
+   * and triggers an automatic route plan.
+   */
   const handleSelectNavMode = (mode: NavigationMode) => {
     setNavMode(mode);
     if (mode === 'local') {
@@ -111,7 +179,23 @@ export function App() {
     }, 100);
   };
 
-  // Plan Route Handler
+  // =========================================================================
+  // Core: Route Planning Pipeline
+  // =========================================================================
+
+  /**
+   * Main route planning pipeline — the central data flow of the application.
+   *
+   * Pipeline steps:
+   *   1. If Google Maps SDK is loaded → request live Directions API routes
+   *   2. If Google Maps unavailable or returns empty → fall back to demo dataset
+   *   3. Pass candidates through AI scoring engine (generateAIRecommendation)
+   *   4. Update UI state with scored routes and recommendation
+   *   5. Record trip to localStorage history
+   *
+   * Error boundary: Entire pipeline wrapped in try/catch/finally to prevent
+   * UI crashes from API failures or data issues.
+   */
   const planRoute = async (
     currentNavMode: NavigationMode = navMode,
     startPoint: string = origin,
@@ -181,12 +265,16 @@ export function App() {
     }
   };
 
-  // Initial Route calculation on launch
+  // Initial route calculation on first render
   useEffect(() => {
     planRoute('local', origin, destination);
   }, []);
 
-  // Dynamically re-evaluate route scores when preference or custom weights change!
+  /**
+   * Live re-evaluation: when the user changes preference profile or
+   * adjusts custom weights in the AI Decision Matrix, re-score all
+   * existing candidates without re-fetching routes.
+   */
   useEffect(() => {
     if (candidateRoutes.length > 0) {
       const { scoredRoutes, recommendation } = generateAIRecommendation(

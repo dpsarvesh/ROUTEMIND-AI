@@ -140,7 +140,7 @@ RouteMind AI uses a **three-tier data pipeline** for road conditions and hazard 
 
 ---
 
-## 🧪 Test Suite
+## 🧪 Test Suite & Error Boundaries
 
 **145 tests across 4 test files** — all passing.
 
@@ -151,20 +151,81 @@ RouteMind AI uses a **three-tier data pipeline** for road conditions and hazard 
 ✓ src/services/dataPipeline.test.ts      (26 tests)  — Data acquisition pipeline
 ```
 
-Test categories:
-- **Weight normalization invariants** — all preference profiles sum to 1.0
-- **Attribute normalization correctness** — per-function boundary tests
-- **Score monotonicity** — faster/shorter routes score higher ceteris paribus
-- **Determinism** — identical inputs produce identical outputs
-- **Route recommendation** — always selects highest-scoring candidate
-- **Map rendering validity** — coordinate bounds, polyline continuity, marker extraction
-- **Data pipeline** — road type classification, construction zone detection, hazard feed merging
+### Test Categories
+
+| Category | Tests | Validates |
+|----------|-------|-----------|
+| Weight normalization invariants | 10 | All 5 preference profiles sum to 1.0, no negative weights |
+| Attribute normalization | 24 | Per-function boundary tests for N_T, N_C, N_I, N_Q, N_D |
+| Score monotonicity | 2 | Faster/shorter routes score ≥ slower/longer (ceteris paribus) |
+| Determinism | 1 | 10 identical runs produce identical outputs |
+| Preference sensitivity | 1 | Rankings change when preference profile changes |
+| Route recommendation | 7 | Always selects highest-scoring candidate |
+| Map rendering validity | 40 | Coordinate bounds, polyline continuity, marker extraction |
+| Data pipeline | 26 | Road classification, construction detection, hazard merging |
+| Data integrity | 21 | Dataset contracts, interpolation, end-to-end pipeline |
+| Edge cases | 3 | Zero duration, uniform candidates, large candidate sets |
+
+### Error Boundary Strategy
+
+| Layer | Strategy |
+|-------|----------|
+| **Scoring Engine** | Division-by-zero guards (`Math.max(1, ...)`), floor clamps (safety ≥ 15, traffic ≥ 10), score clamping [40, 99], empty-input validation |
+| **Data Pipeline** | 5-min TTL cache, unknown road type defaults to MDR, deduplication on incident merge |
+| **Browser APIs** | `try/catch` on all `localStorage` reads with safe defaults, geolocation permission/timeout handling, Google Maps auth failure callback |
+| **Application** | `try/catch/finally` wrapping entire route planning pipeline, dataset fallback when Google Maps fails |
 
 Run tests:
 ```bash
 npm test              # Run once
 npm run test:watch    # Watch mode
+npx vitest --coverage # Generate coverage report
 ```
+
+> Full technical testing documentation: [`docs/testing_and_error_boundaries.md`](./docs/testing_and_error_boundaries.md)
+
+---
+
+## 📡 API Endpoints & External Services
+
+RouteMind AI is a **client-side SPA** — no custom backend server. All API calls are made directly from the browser.
+
+### External APIs
+
+| API | Endpoint | Purpose | Required? |
+|-----|----------|---------|-----------|
+| **Google Maps JS SDK** | `maps.googleapis.com/maps/api/js` | Map rendering, traffic layer | Optional |
+| **Google Directions API** | Via JS SDK `DirectionsService` | Live route alternatives with `duration_in_traffic` | Optional |
+| **OpenStreetMap Tiles** | `tile.openstreetmap.org/{z}/{x}/{y}.png` | Free map tile rendering (Leaflet fallback) | Default |
+| **ArcGIS Satellite** | `server.arcgisonline.com/.../tile/{z}/{y}/{x}` | Satellite imagery toggle | Optional |
+| **Browser Geolocation** | `navigator.geolocation` | GPS position for "Use My Location" and active navigation | Optional |
+
+### Internal Service APIs
+
+| Service | Key Methods | Purpose |
+|---------|-------------|---------|
+| `aiScoringEngine.ts` | `calculateRouteScore()`, `generateAIRecommendation()` | MCDA scoring + NL recommendation |
+| `dataPipeline.ts` | `fetchRouteConditions()`, `getPipelineStatus()` | Road condition & hazard analysis |
+| `googleMapsService.ts` | `loadGoogleMaps()`, `calculateRealGoogleRoutes()` | Google Maps SDK management |
+| `geolocationService.ts` | `getCurrentPosition()`, `startLiveTracking()` | Browser GPS with observer pattern |
+| `storageService.ts` | `getSavedPlaces()`, `addTripHistory()`, `getUserPreferences()` | localStorage persistence |
+
+> Full API reference with signatures and response schemas: [`docs/api_endpoints_and_data_schema.md`](./docs/api_endpoints_and_data_schema.md)
+
+---
+
+## 💾 Data Storage Schema (localStorage)
+
+All user data persists in browser `localStorage` under namespaced keys:
+
+| Key | Schema | Max Size | Description |
+|-----|--------|----------|-------------|
+| `routemind_saved_places` | `SavedPlace[]` | ~50 entries | Favorite locations (home, work, favorites) |
+| `routemind_trip_history` | `TripHistoryItem[]` | 30 entries (FIFO) | Recent trip planning history |
+| `routemind_user_preferences` | `UserPreferences` | 1 object | App config (travel mode, preference, demo mode) |
+| `routemind_google_api_key` | `string` | 1 value | Google Maps API key (plain text) |
+
+> Full schema definitions with JSON examples: [`docs/api_endpoints_and_data_schema.md §4`](./docs/api_endpoints_and_data_schema.md#4-localstorage-database-schema)
 
 ---
 
@@ -229,49 +290,78 @@ Output in `./dist/` — deploy to GitHub Pages, Netlify, or Vercel.
 ```
 routemind-ai/
 ├── src/
-│   ├── components/          # React UI components
-│   │   ├── MapContainer.tsx         # Leaflet + Google Maps dual renderer
-│   │   ├── TripPlannerCard.tsx      # Origin/destination/mode selector
-│   │   ├── AIRecommendationCard.tsx # AI recommendation display
-│   │   ├── AIDecisionMatrixModal.tsx # Interactive weight tuning
-│   │   ├── ActiveNavigationHUD.tsx  # Turn-by-turn overlay
-│   │   ├── RouteOptionsList.tsx     # Route candidate cards
-│   │   ├── RoadConditionsPanel.tsx  # Road quality + hazard panel
-│   │   └── ...
-│   ├── services/
-│   │   ├── aiScoringEngine.ts       # MCDA scoring + recommendation
-│   │   ├── aiScoringEngine.test.ts  # 58 unit tests
-│   │   ├── dataPipeline.ts          # Three-tier data acquisition
-│   │   ├── dataPipeline.test.ts     # 26 pipeline tests
-│   │   ├── mapRendering.test.ts     # 40 map rendering tests
-│   │   ├── googleMapsService.ts     # Google Maps JS SDK integration
-│   │   ├── geolocationService.ts    # Browser GPS service
-│   │   └── storageService.ts        # localStorage persistence
-│   ├── data/
-│   │   ├── coimbatoreData.ts        # Local route dataset (Coimbatore)
-│   │   ├── interDistrictData.ts     # Inter-district route dataset
-│   │   └── dataIntegrity.test.ts    # 21 data validation tests
+│   ├── components/                      # React UI components (13 files)
+│   │   ├── MapContainer.tsx                 # Leaflet + Google Maps dual renderer
+│   │   ├── TripPlannerCard.tsx              # Origin/destination/mode selector
+│   │   ├── AIRecommendationCard.tsx         # AI recommendation display
+│   │   ├── AIDecisionMatrixModal.tsx        # Interactive MCDA weight tuning
+│   │   ├── AIDashboardSummary.tsx           # Dashboard snapshot card
+│   │   ├── ActiveNavigationHUD.tsx          # Turn-by-turn navigation overlay
+│   │   ├── RouteOptionsList.tsx             # Route candidate cards
+│   │   ├── RoadConditionsPanel.tsx          # Road quality + hazard panel
+│   │   ├── TrafficAnalysisCard.tsx          # Live traffic analysis display
+│   │   ├── Header.tsx                       # Global app header + nav mode toggle
+│   │   ├── ApiKeyModal.tsx                  # Google Maps API key input modal
+│   │   ├── SavedPlacesModal.tsx             # Saved places management modal
+│   │   └── TripHistoryModal.tsx             # Trip history display modal
+│   ├── services/                        # Business logic & API services
+│   │   ├── aiScoringEngine.ts               # MCDA scoring engine (§§3–4 of spec)
+│   │   ├── aiScoringEngine.test.ts          # 58 unit tests
+│   │   ├── dataPipeline.ts                  # Three-tier data acquisition (§10)
+│   │   ├── dataPipeline.test.ts             # 26 pipeline tests
+│   │   ├── mapRendering.test.ts             # 40 map rendering tests
+│   │   ├── googleMapsService.ts             # Google Maps JS SDK integration
+│   │   ├── geolocationService.ts            # Browser GPS with observer pattern
+│   │   └── storageService.ts                # localStorage persistence layer
+│   ├── data/                            # Route datasets (Tier 3 data)
+│   │   ├── coimbatoreData.ts                # Local routes — 15 locations, 5 scenarios
+│   │   ├── interDistrictData.ts             # Regional routes — 8 destinations
+│   │   └── dataIntegrity.test.ts            # 21 data validation tests
 │   ├── types/
-│   │   └── navigation.ts            # TypeScript type definitions
-│   └── App.tsx                      # Main application component
-├── docs/
-│   └── ai_scoring_engine_specification.md  # Formal MCDA specification
+│   │   └── navigation.ts                    # TypeScript type definitions (13 interfaces)
+│   ├── App.tsx                              # Main application component
+│   ├── main.tsx                             # React DOM entry point
+│   └── index.css                            # Global styles
+├── docs/                                # Technical documentation
+│   ├── ai_scoring_engine_specification.md   # Formal MCDA specification (§§1–10)
+│   ├── testing_and_error_boundaries.md      # Unit testing & error boundary guide
+│   └── api_endpoints_and_data_schema.md     # API endpoints & localStorage schema
 ├── .github/workflows/
-│   └── deploy.yml                   # CI/CD (test + deploy)
-└── README.md
+│   └── deploy.yml                           # CI/CD (test + deploy)
+├── vitest.config.ts                         # Test runner configuration
+├── vite.config.ts                           # Build tool configuration
+├── tsconfig.json                            # TypeScript configuration
+├── tailwind.config.js                       # Tailwind CSS configuration
+├── package.json                             # Dependencies & scripts
+└── README.md                                # This file
 ```
+
+---
+
+## 📚 Documentation Index
+
+| Document | Location | Contents |
+|----------|----------|----------|
+| **README** (this file) | `./README.md` | Project overview, getting started, feature summary |
+| **AI Scoring Engine Spec** | [`docs/ai_scoring_engine_specification.md`](./docs/ai_scoring_engine_specification.md) | Formal MCDA mathematical specification (§§1–10) |
+| **Testing & Error Boundaries** | [`docs/testing_and_error_boundaries.md`](./docs/testing_and_error_boundaries.md) | 145-test breakdown, error boundary patterns, test helpers |
+| **API & Data Schema** | [`docs/api_endpoints_and_data_schema.md`](./docs/api_endpoints_and_data_schema.md) | External APIs, service APIs, localStorage schema, data flow diagrams |
+| **Inline Code Docs** | All `src/**/*.ts` files | JSDoc comments on all modules, classes, interfaces, and functions |
 
 ---
 
 ## 🏆 Academic Context
 
 This project demonstrates a practical implementation of:
-- **Multi-Criteria Decision Analysis (MCDA)** — Weighted Linear Additive Model
+- **Multi-Criteria Decision Analysis (MCDA)** — Weighted Linear Additive Model with formal mathematical specification
 - **Heterogeneous unit normalization** — converting minutes, km, ordinal labels, and event arrays into a common `[0, 100]` scalar space
-- **Transparent AI recommendations** — human-readable explanations with full attribute breakdown
-- **Three-tier data acquisition pipeline** — graceful degradation from live APIs to synthetic heuristics
-- **Comprehensive test-driven development** — 145 tests validating all mathematical invariants
+- **Transparent AI recommendations** — human-readable explanations with full attribute breakdown and confidence scoring
+- **Three-tier data acquisition pipeline** — graceful degradation from live APIs to synthetic heuristics with quality decay models
+- **Comprehensive test-driven development** — 145 tests validating all mathematical invariants, boundary conditions, and monotonicity properties
+- **Error boundary engineering** — defensive programming patterns at every application layer with safe fallbacks
+- **Technical documentation** — formal specification, API reference, data schema, and inline code documentation
 
 ---
 
 *Built with React 18, TypeScript, Vite, Leaflet, and Google Maps JS Platform.*
+

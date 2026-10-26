@@ -1,6 +1,38 @@
+/**
+ * RouteMind AI — Inter-District Route Dataset
+ *
+ * This module provides the curated demo route dataset for regional/inter-district
+ * navigation originating from Coimbatore. It serves as the Tier 3 (synthetic
+ * heuristics) data source for long-distance routes when Google Maps is unavailable.
+ *
+ * Contents:
+ *   1. INTER_DISTRICT_PRESETS — 8 major district destinations in Tamil Nadu & Karnataka
+ *   2. getInterDistrictDemoRoutes() — Returns 2–3 route candidates per destination
+ *
+ * Supported destinations:
+ *   - Ooty (Nilgiris) — 2 routes via Coonoor Ghat / Kotagiri alternate
+ *   - Chennai — 2 routes via Salem-Krishnagiri / Erode-Trichy
+ *   - Bengaluru — 2 routes via Hosur / Mysore Road
+ *   - Madurai — 2 routes via Palani / Dindigul
+ *   - Salem, Tiruppur, Erode — 2 routes each
+ *   - Fallback — generic Coimbatore→Salem routes for unknown destinations
+ *
+ * Data realism:
+ *   - Distances based on real NH/SH highways (NH 44, NH 181, NH 544, etc.)
+ *   - Toll counts reflect actual toll plazas on these corridors
+ *   - Weather/terrain warnings for ghat roads are based on real conditions
+ *   - Highway tags reference actual road classifications
+ *
+ * @module data/interDistrictData
+ */
 import { PresetLocation, RouteOption, LatLng } from '../types/navigation';
 import { interpolatePoints } from './coimbatoreData';
 
+/**
+ * Preset inter-district destinations available in the trip planner dropdown.
+ * Each destination includes approximate distance from Coimbatore in the subtitle.
+ * All coordinates are for the primary bus stand / junction of each city.
+ */
 export const INTER_DISTRICT_PRESETS: PresetLocation[] = [
   { name: 'Chennai (Central / Koyambedu)', category: 'district', lat: 13.0827, lng: 80.2707, subtitle: 'State Capital (~505 km)' },
   { name: 'Salem (New Bus Stand)', category: 'district', lat: 11.6643, lng: 78.1460, subtitle: 'NH 544 Corridor (~165 km)' },
@@ -12,6 +44,23 @@ export const INTER_DISTRICT_PRESETS: PresetLocation[] = [
   { name: 'Bengaluru (Electronic City / Silk Board)', category: 'district', lat: 12.9716, lng: 77.5946, subtitle: 'IT Capital (~365 km)' },
 ];
 
+/**
+ * Returns demo route candidates for inter-district travel from Coimbatore.
+ *
+ * Route matching uses case-insensitive substring matching on the destination name.
+ * Each destination scenario returns 2–3 route alternatives with:
+ *   - Realistic NH/SH highway distances and travel times
+ *   - Highway classification tags for road type classification
+ *   - Toll count data for inter-district routes
+ *   - Fuel consumption estimates
+ *   - Terrain/weather warnings where applicable (e.g., Nilgiris ghat)
+ *
+ * Fallback: Unknown destinations return Coimbatore→Salem routes via NH 544.
+ *
+ * @param originName - Origin city (typically "Coimbatore")
+ * @param destName - Destination name (matched via substring, e.g., "Ooty", "Chennai")
+ * @returns Array of 2–3 RouteOption candidates for MCDA evaluation
+ */
 export function getInterDistrictDemoRoutes(originName: string, destName: string): RouteOption[] {
   const normDest = destName.toLowerCase();
 
